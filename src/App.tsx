@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import './App.css'
 import axios from 'axios'
 
@@ -8,10 +8,16 @@ interface FormData {
   phone: string
   age: string
   gender: string
+  dateOfBirth: string
   dateofApplication: string
   subject: string
   department: string
   message: string
+}
+
+interface Submission extends FormData {
+  id: number
+  submittedAt: string
 }
 
 const App = () => {
@@ -21,6 +27,7 @@ const App = () => {
     phone: '',
     age: '',
     gender: '',
+    dateOfBirth: '',
     dateofApplication: '',
     subject: '',
     department: '',
@@ -28,9 +35,63 @@ const App = () => {
   })
 
   const [showSubmissions, setShowSubmissions] = useState(false)
-  const [allSubmissions, setAllSubmissions] = useState<(FormData & { id: number; submittedAt: string })[]>([])
-  const [selectedSubmission, setSelectedSubmission] = useState<(FormData & { id: number; submittedAt: string }) | null>(null)
+  const [allSubmissions, setAllSubmissions] = useState<Submission[]>([])
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
   const [searchId, setSearchId] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  // Load submissions from Strapi and localStorage on mount
+  useEffect(() => {
+    const fetchSubmissions = async () => {
+      try {
+        console.log('Fetching from Strapi...')
+        // Fetch from Strapi
+        const response = await axios.get('http://localhost:1337/api/student-forms')
+        console.log('Strapi response:', response.data)
+        if (response.data.data) {
+          const strapiSubmissions = response.data.data.map((item: any) => ({
+            id: item.id,
+            name: item.attributes.name || '',
+            email: item.attributes.email || '',
+            phone: item.attributes.phone || '',
+            age: item.attributes.age || '',
+            gender: item.attributes.gender || '',
+            dateofApplication: item.attributes.dateofApplication || '',
+            subject: item.attributes.subject || '',
+            department: item.attributes.department || '',
+            message: item.attributes.message || '',
+            submittedAt: item.attributes.createdAt ? new Date(item.attributes.createdAt).toLocaleString() : new Date().toLocaleString()
+          }))
+          console.log('Mapped submissions:', strapiSubmissions)
+          setAllSubmissions(strapiSubmissions)
+        }
+      } catch (error) {
+        console.error('Error fetching submissions from Strapi:', error)
+        // Fallback to localStorage if Strapi fails
+        const savedSubmissions = localStorage.getItem('submissions')
+        console.log('Fallback to localStorage:', savedSubmissions)
+        if (savedSubmissions) {
+          try {
+            const parsed = JSON.parse(savedSubmissions)
+            console.log('Parsed localStorage:', parsed)
+            setAllSubmissions(parsed)
+          } catch (e) {
+            console.error('Error parsing localStorage:', e)
+          }
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchSubmissions()
+  }, [])
+
+  // Update localStorage whenever submissions change (after component mounts)
+  useEffect(() => {
+    if (!loading) {
+      localStorage.setItem('submissions', JSON.stringify(allSubmissions))
+    }
+  }, [allSubmissions, loading])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -39,33 +100,82 @@ const App = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('Form submitted:', formData)
-
+    
     try {
-      await axios.post('http://localhost:1337/api/student-forms', { data: formData })
-      console.log('Form data successfully submitted to backend')
+      // Submit to Strapi
+      const response = await axios.post('http://localhost:1337/api/student-forms', { 
+        data: formData 
+      })
+      
+      // Use the ID from Strapi if available
+      const newSubmission: Submission = {
+        ...formData,
+        id: response.data.data.id || Date.now(),
+        submittedAt: new Date().toLocaleString()
+      }
+      
+      setAllSubmissions([newSubmission, ...allSubmissions])
+      
+      // Save to localStorage as backup
+      const updatedSubmissions = [newSubmission, ...allSubmissions]
+      localStorage.setItem('submissions', JSON.stringify(updatedSubmissions))
+      
+      setFormData({
+        name: '',
+        email: '',
+        phone: '',
+        age: '',
+        gender: '',
+        dateOfBirth: '',
+        dateofApplication: '',
+        subject: '',
+        department: '',
+        message: ''
+      })
+      setShowSubmissions(true)
     } catch (error) {
       console.error('Error submitting form data to backend:', error)
+      
+      // Fallback: save locally if Strapi fails
+      const newSubmission: Submission = {
+        ...formData,
+        id: Date.now(),
+        submittedAt: new Date().toLocaleString()
+      }
+      setAllSubmissions([newSubmission, ...allSubmissions])
+      localStorage.setItem('submissions', JSON.stringify([newSubmission, ...allSubmissions]))
+      
+      alert('Form submitted locally. Backend may be offline.')
+      setFormData({
+        name: '',
+        email: '',
+        phone: '',
+        age: '',
+        gender: '',
+        dateOfBirth: '',
+        dateofApplication: '',
+        subject: '',
+        department: '',
+        message: ''
+      })
+      setShowSubmissions(true)
     }
-
-    const newSubmission = { ...formData, id: Date.now(), submittedAt: new Date().toLocaleString() }
-    setAllSubmissions([newSubmission, ...allSubmissions])
-    setFormData({
-      name: '',
-      email: '',
-      phone: '',
-      age: '',
-      gender: '',
-      dateofApplication: '',
-      subject: '',
-      department: '',
-      message: ''
-    })
-    setShowSubmissions(true)
   }
 
   const handleDeleteSubmission = (id: number) => {
-    setAllSubmissions(allSubmissions.filter(sub => sub.id !== id))
+    try {
+      // Try to delete from Strapi
+      axios.delete(`http://localhost:1337/api/student-forms/${id}`)
+        .catch(error => console.error('Error deleting from Strapi:', error))
+    } catch (error) {
+      console.error('Error deleting submission:', error)
+    }
+    
+    // Delete from local state
+    const updatedSubmissions = allSubmissions.filter(sub => sub.id !== id)
+    setAllSubmissions(updatedSubmissions)
+    localStorage.setItem('submissions', JSON.stringify(updatedSubmissions))
+    
     if (selectedSubmission?.id === id) setSelectedSubmission(null)
   }
 
@@ -120,6 +230,10 @@ const App = () => {
                     <option value="Other">Other</option>
                   </select>
                 </div>
+                <div className="form-group">
+                  <label htmlFor="dateOfBirth">Date of Birth <span>*</span></label>
+                  <input type="date" id="dateOfBirth" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleChange} required />
+                </div>
               </div>
 
               {/* Academic Information */}
@@ -131,11 +245,24 @@ const App = () => {
                 </div>
                 <div className="form-group">
                   <label htmlFor="subject">Subject <span>*</span></label>
-                  <input type="text" id="subject" name="subject" value={formData.subject} onChange={handleChange} placeholder="Enter subject" required />
+                  <select id="subject" name="subject" value={formData.subject} onChange={handleChange} required>
+                    <option value="">Select Subject</option>
+                    <option value="General Enquiry">General Enquiry</option>
+                    <option value="Technical Support">Technical Support</option>
+                    <option value="Admission">Admission</option>
+                    <option value="Feedback">Feedback</option>
+                  </select>
                 </div>
                 <div className="form-group">
                   <label htmlFor="department">Department <span>*</span></label>
-                  <input type="text" id="department" name="department" value={formData.department} onChange={handleChange} placeholder="Enter department" required />
+                  <select id="department" name="department" value={formData.department} onChange={handleChange} required>
+                    <option value="">Select Department</option>
+                    <option value="Computer Science">Computer Science</option>
+                    <option value="Engineering">Engineering</option>
+                    <option value="Business">Business</option>
+                    <option value="Arts">Arts</option>
+                    <option value="Science">Science</option>
+                  </select>
                 </div>
               </div>
 
@@ -143,18 +270,10 @@ const App = () => {
               <div className="form-section-title">Message</div>
               <div className="form-row">
                 <div className="form-group">
-                <label htmlFor="message">Message <span>*</span></label>
-                <textarea
-                  id="message"
-                  name="message"
-                  value={formData.message}
-                  onChange={handleChange}
-                  placeholder="Enter your message"
-                  required
-                ></textarea>
+                  <label htmlFor="message">Message <span>*</span></label>
+                  <textarea id="message" name="message" value={formData.message} onChange={handleChange} placeholder="Enter your message" required></textarea>
                 </div>
               </div>
-
 
               <div className="form-actions">
                 <button type="submit" className="btn-submit">✓ Submit Form</button>
@@ -189,7 +308,7 @@ const App = () => {
 
                   <h3>Academic Information</h3>
                   <div className="detail-grid">
-                    {['dateOfApplication', 'subject', 'department'].map((field) => (
+                    {['dateofApplication', 'subject', 'department'].map((field) => (
                       <div className="detail-row" key={field}>
                         <span className="detail-label">{field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, ' $1')}:</span>
                         <span className="detail-value">{selectedSubmission[field as keyof FormData]}</span>
@@ -219,7 +338,11 @@ const App = () => {
               <input type="text" placeholder="Search by ID or Name..." value={searchId} onChange={(e) => setSearchId(e.target.value)} className="search-input" />
             </div>
 
-            {allSubmissions.length === 0 ? (
+            {loading ? (
+              <div className="empty-state">
+                <p>Loading submissions...</p>
+              </div>
+            ) : allSubmissions.length === 0 ? (
               <div className="empty-state">
                 <p>No submissions yet. Fill out and submit the form to see them here.</p>
               </div>
@@ -236,15 +359,6 @@ const App = () => {
                         <h3>{sub.name}</h3>
                         <span className="list-item-date">{sub.submittedAt}</span>
                       </div>
-
-                      {/* <div className="list-item-preview">
-                        {['email', 'phone', 'age', 'gender', 'subject', 'department'].map((field) => (
-                          <div key={field}>
-                            <span className="preview-label">{field.charAt(0).toUpperCase() + field.slice(1)}:</span>
-                            <span className="preview-value">{sub[field as keyof FormData]}</span>
-                          </div>
-                        ))}
-                      </div> */}
                     </div>
                   ))}
               </div>
@@ -257,3 +371,4 @@ const App = () => {
 }
 
 export default App
+
