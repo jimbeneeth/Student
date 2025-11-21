@@ -76,6 +76,38 @@ body {
   overflow-y: auto;
 }
 
+/* View Transition Animations */
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* Form Container */
 .form-container {
   width: 100%;
@@ -84,6 +116,7 @@ body {
   padding: 3rem;
   border-radius: 15px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  animation: slideInFromLeft 0.5s ease-out;
 }
 
 .form-container h1 {
@@ -170,6 +203,37 @@ body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+/* Enhanced Date Input Styling */
+.form-group input[type="date"] {
+  cursor: pointer;
+  position: relative;
+}
+
+.form-group input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: 4px;
+  margin-right: 2px;
+  opacity: 0.7;
+  filter: invert(0.5) sepia(0.5) hue-rotate(200deg) saturate(1.5);
+  transition: all 0.3s ease;
+}
+
+.form-group input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  filter: invert(0.4) sepia(0.6) hue-rotate(200deg) saturate(1.8);
+}
+
+.form-group input[type="date"]:focus::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  filter: invert(0.3) sepia(0.7) hue-rotate(200deg) saturate(2);
+}
+
+/* Firefox date input styling */
+.form-group input[type="date"]::-moz-calendar-picker-indicator {
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
 .form-actions {
   display: flex;
   gap: 1rem;
@@ -209,6 +273,7 @@ body {
   padding: 3rem;
   border-radius: 15px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  animation: slideInFromRight 0.5s ease-out;
 }
 
 .submissions-container h1 {
@@ -346,6 +411,7 @@ body {
   padding: 3rem;
   border-radius: 15px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  animation: fadeIn 0.5s ease-out;
 }
 
 .btn-back {

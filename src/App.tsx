@@ -20,6 +20,11 @@ interface Submission extends FormData {
   submittedAt: string
 }
 
+// Generate a random 10-digit ID
+const generateTenDigitId = () => {
+  return Math.floor(1000000000 + Math.random() * 8999999999)
+}
+
 const App = () => {
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -103,14 +108,15 @@ const App = () => {
     
     try {
       // Submit to Strapi
-      const response = await axios.post('http://localhost:1337/api/student-forms', { 
+      await axios.post('http://localhost:1337/api/student-forms', { 
         data: formData 
       })
       
-      // Use the ID from Strapi if available
+      // Use a 10-digit ID
+      const tenDigitId = generateTenDigitId()
       const newSubmission: Submission = {
         ...formData,
-        id: response.data.data.id || Date.now(),
+        id: tenDigitId,
         submittedAt: new Date().toLocaleString()
       }
       
@@ -137,9 +143,10 @@ const App = () => {
       console.error('Error submitting form data to backend:', error)
       
       // Fallback: save locally if Strapi fails
+      const tenDigitId = generateTenDigitId()
       const newSubmission: Submission = {
         ...formData,
-        id: Date.now(),
+        id: tenDigitId,
         submittedAt: new Date().toLocaleString()
       }
       setAllSubmissions([newSubmission, ...allSubmissions])
