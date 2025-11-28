@@ -17,6 +17,7 @@ interface FormData {
 
 interface Submission extends FormData {
   id: number
+  documentId?: string
   submittedAt: string
 }
 
@@ -53,20 +54,27 @@ const App = () => {
         // Fetch from Strapi
         const response = await axios.get('http://localhost:1337/api/student-forms')
         console.log('Strapi response:', response.data)
-        if (response.data.data) {
-          const strapiSubmissions = response.data.data.map((item: any) => ({
-            id: item.id,
-            name: item.attributes.name || '',
-            email: item.attributes.email || '',
-            phone: item.attributes.phone || '',
-            age: item.attributes.age || '',
-            gender: item.attributes.gender || '',
-            dateofApplication: item.attributes.dateofApplication || '',
-            subject: item.attributes.subject || '',
-            department: item.attributes.department || '',
-            message: item.attributes.message || '',
-            submittedAt: item.attributes.createdAt ? new Date(item.attributes.createdAt).toLocaleString() : new Date().toLocaleString()
-          }))
+        if (response.data.data && Array.isArray(response.data.data)) {
+          // Map Strapi data to frontend format
+          const strapiSubmissions: Submission[] = response.data.data.map((item: any) => {
+            // Check if item has attributes (Strapi v4 format)
+            const attrs = item.attributes || item
+            return {
+              id: item.id,
+              documentId: item.documentId,
+              name: attrs.name || '',
+              email: attrs.email || '',
+              phone: attrs.phone || '',
+              age: attrs.age || '',
+              gender: attrs.gender || '',
+              dateOfBirth: attrs.dateOfBirth || '',
+              dateofApplication: attrs.dateofApplication || '',
+              subject: attrs.subject || '',
+              department: attrs.department || '',
+              message: attrs.message || '',
+              submittedAt: attrs.createdAt ? new Date(attrs.createdAt).toLocaleString() : new Date().toLocaleString()
+            }
+          })
           console.log('Mapped submissions:', strapiSubmissions)
           setAllSubmissions(strapiSubmissions)
         }
@@ -98,6 +106,70 @@ const App = () => {
     }
   }, [allSubmissions, loading])
 
+  // Periodic sync with Strapi for bidirectional updates (new entries AND deletions)
+  useEffect(() => {
+    // Don't start syncing until initial load is complete
+    if (loading) return
+    
+    const syncInterval = setInterval(async () => {
+      try {
+        console.log('🔄 Syncing with Strapi...')
+        const response = await axios.get('http://localhost:1337/api/student-forms')
+        console.log('📊 Strapi response:', response.data)
+        if (response.data.data && Array.isArray(response.data.data)) {
+          // Map Strapi data to frontend format
+          const strapiSubmissions: Submission[] = response.data.data.map((item: any) => {
+            // Check if item has attributes (Strapi v4 format)
+            const attrs = item.attributes || item
+            console.log('Item structure:', { id: item.id, documentId: item.documentId, hasAttributes: !!item.attributes })
+            return {
+              id: item.id,
+              documentId: item.documentId,
+              name: attrs.name || '',
+              email: attrs.email || '',
+              phone: attrs.phone || '',
+              age: attrs.age || '',
+              gender: attrs.gender || '',
+              dateOfBirth: attrs.dateOfBirth || '',
+              dateofApplication: attrs.dateofApplication || '',
+              subject: attrs.subject || '',
+              department: attrs.department || '',
+              message: attrs.message || '',
+              submittedAt: attrs.createdAt ? new Date(attrs.createdAt).toLocaleString() : new Date().toLocaleString()
+            }
+          })
+          
+          console.log('✅ Mapped Strapi submissions:', strapiSubmissions)
+          console.log('📱 Current frontend submissions:', allSubmissions)
+          
+          const strapiIds = new Set(strapiSubmissions.map((sub: Submission) => sub.id))
+          const frontendIds = new Set(allSubmissions.map((sub: Submission) => sub.id))
+          
+          console.log('Strapi IDs:', [...strapiIds])
+          console.log('Frontend IDs:', [...frontendIds])
+          
+          // Check if there are any differences
+          const needsSync = strapiIds.size !== frontendIds.size || 
+                           ![...strapiIds].every((id: number) => frontendIds.has(id))
+          
+          console.log('Needs sync?', needsSync)
+          
+          if (needsSync) {
+            console.log('🔄 Syncing frontend with Strapi...')
+            // Update frontend with Strapi data (this handles both new entries and deletions)
+            setAllSubmissions(strapiSubmissions)
+            localStorage.setItem('submissions', JSON.stringify(strapiSubmissions))
+            console.log('✅ Sync complete!')
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error syncing with Strapi:', error)
+      }
+    }, 3000) // Sync every 3 seconds
+    
+    return () => clearInterval(syncInterval)
+  }, [loading, allSubmissions])
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
@@ -108,15 +180,15 @@ const App = () => {
     
     try {
       // Submit to Strapi
-      await axios.post('http://localhost:1337/api/student-forms', { 
+      const response = await axios.post('http://localhost:1337/api/student-forms', { 
         data: formData 
       })
       
-      // Use a 10-digit ID
-      const tenDigitId = generateTenDigitId()
+      // Use the Strapi ID that was just created
+      const strapiId = response.data.data.id
       const newSubmission: Submission = {
         ...formData,
-        id: tenDigitId,
+        id: strapiId,
         submittedAt: new Date().toLocaleString()
       }
       
@@ -142,7 +214,7 @@ const App = () => {
     } catch (error) {
       console.error('Error submitting form data to backend:', error)
       
-      // Fallback: save locally if Strapi fails
+      // Fallback: save locally if Strapi fails - use 10-digit ID
       const tenDigitId = generateTenDigitId()
       const newSubmission: Submission = {
         ...formData,
@@ -169,21 +241,59 @@ const App = () => {
     }
   }
 
-  const handleDeleteSubmission = (id: number) => {
+  const handleDeleteSubmission = async (id: number) => {
+    console.log('🗑️ Delete button clicked for ID:', id)
+    
     try {
-      // Try to delete from Strapi
-      axios.delete(`http://localhost:1337/api/student-forms/${id}`)
-        .catch(error => console.error('Error deleting from Strapi:', error))
-    } catch (error) {
-      console.error('Error deleting submission:', error)
+      // Find the submission to get documentId
+      const submissionToDelete = allSubmissions.find(sub => sub.id === id)
+      console.log('Submission to delete:', submissionToDelete)
+      
+      // Try to delete from Strapi if documentId exists
+      if (submissionToDelete?.documentId) {
+        const deleteUrl = `http://localhost:1337/api/student-forms/${submissionToDelete.documentId}`
+        console.log('Delete URL using documentId:', deleteUrl)
+        
+        try {
+          const response = await axios.delete(deleteUrl)
+          console.log('✅ Successfully deleted from Strapi:', id)
+          console.log('Response status:', response.status)
+        } catch (strapiError: any) {
+          console.warn('⚠️ Could not delete from Strapi backend:', strapiError.message)
+          // Continue to delete from frontend anyway
+        }
+      } else {
+        console.warn('⚠️ No documentId found - skipping backend deletion')
+      }
+      
+      // Delete from local state and localStorage regardless
+      console.log('Deleting from local state and localStorage...')
+      const updatedSubmissions = allSubmissions.filter(sub => sub.id !== id)
+      setAllSubmissions(updatedSubmissions)
+      localStorage.setItem('submissions', JSON.stringify(updatedSubmissions))
+      
+      if (selectedSubmission?.id === id) setSelectedSubmission(null)
+      console.log('✅ Deletion complete from frontend!')
+    } catch (error: any) {
+      console.error('❌ Error during deletion:', error.message)
+      
+      // Check if it's a 404 - might mean the ID doesn't match
+      if (error.response?.status === 404) {
+        console.warn('⚠️ 404 - Entry not found in Strapi. Removing from frontend anyway.')
+        const updatedSubmissions = allSubmissions.filter(sub => sub.id !== id)
+        setAllSubmissions(updatedSubmissions)
+        localStorage.setItem('submissions', JSON.stringify(updatedSubmissions))
+        if (selectedSubmission?.id === id) setSelectedSubmission(null)
+      }
+      
+      // Don't delete locally if it's a permission error
+      if (error.response?.status === 403) {
+        alert(`❌ Permission denied: ${error.response?.data?.error?.message || error.message}`)
+        return
+      }
+      
+      alert(`❌ Error: ${error.response?.status} ${error.response?.data?.error?.message || error.message}`)
     }
-    
-    // Delete from local state
-    const updatedSubmissions = allSubmissions.filter(sub => sub.id !== id)
-    setAllSubmissions(updatedSubmissions)
-    localStorage.setItem('submissions', JSON.stringify(updatedSubmissions))
-    
-    if (selectedSubmission?.id === id) setSelectedSubmission(null)
   }
 
   return (

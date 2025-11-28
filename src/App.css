@@ -220,7 +220,7 @@ body {
 
 .form-group input[type="date"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
-  filter: invert(0) brightness(0);
+  filter: invert(10) brightness(0);
 }
 
 .form-group input[type="date"]:focus::-webkit-calendar-picker-indicator {
